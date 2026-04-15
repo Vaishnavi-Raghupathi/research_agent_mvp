@@ -1,1 +1,6 @@
-openai
+streamlit
+pymupdf
+groq
+google-genai
+python-dotenv
+nbformat

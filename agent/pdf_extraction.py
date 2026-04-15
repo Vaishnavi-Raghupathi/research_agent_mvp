@@ -2,6 +2,7 @@
 Professional PDF extraction with multiple strategies.
 Uses PyMuPDF for text, but also tries to preserve structure.
 """
+import os
 import fitz  # PyMuPDF
 import re
 from collections import defaultdict
@@ -9,64 +10,26 @@ from collections import defaultdict
 def extract_pdf(path):
     """
     Multi-strategy PDF extraction.
-    Returns dict with text, blocks, and metadata.
+    Returns plain text extracted from the PDF.
     """
-    doc = fitz.open(path)
-    
-    result = {
-        "text": "",
-        "blocks": [],
-        "pages": [],
-        "metadata": doc.metadata
-    }
-    
-    for page_num, page in enumerate(doc):
-        page_dict = {
-            "number": page_num + 1,
-            "text": "",
-            "blocks": []
-        }
-        
-        # Strategy 1: Get structured blocks (preserves layout better)
-        blocks = page.get_text("dict")["blocks"]
-        
-        for block in blocks:
-            if block.get("type") == 0:  # Text block
-                block_text = ""
-                block_data = {
-                    "bbox": block["bbox"],
-                    "text": "",
-                    "lines": []
-                }
-                
-                for line in block.get("lines", []):
-                    line_text = ""
-                    for span in line.get("spans", []):
-                        text = span.get("text", "")
-                        line_text += text + " "
-                        block_text += text + " "
-                    
-                    block_data["lines"].append(line_text.strip())
-                
-                block_data["text"] = block_text.strip()
-                
-                # Identify potential equation blocks
-                if is_equation_block(block_data["text"]):
-                    block_data["type"] = "equation_candidate"
-                else:
-                    block_data["type"] = "text"
-                
-                page_dict["blocks"].append(block_data)
-                page_dict["text"] += block_text + "\n"
-        
-        result["pages"].append(page_dict)
-        result["text"] += page_dict["text"] + "\n"
-    
-    # Extract equation candidates from blocks
-    result["equation_blocks"] = extract_equation_blocks(result["pages"])
-    
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"The file '{path}' does not exist.")
+
+    if not os.access(path, os.R_OK):
+        raise PermissionError(f"The file '{path}' cannot be read. Check file permissions.")
+
+    try:
+        doc = fitz.open(path)
+    except Exception:
+        raise ValueError(f"Could not open PDF: {path}")
+
+    plain_text = ""
+
+    for page in doc:
+        plain_text += page.get_text() + "\n"
+
     doc.close()
-    return result
+    return plain_text
 
 
 def is_equation_block(text):

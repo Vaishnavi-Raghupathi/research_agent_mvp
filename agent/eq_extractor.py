@@ -2,110 +2,85 @@ import re
 
 def extract_equations(text: str) -> list:
     """
-    Extract mathematical equations from text with better filtering.
-    Returns list of dicts with 'raw' and 'cleaned' keys.
+    Extract mathematical equations as clean strings.
+    Compatible with Day-7 pipeline (list[str], no dicts).
     """
+
+    # Ensure input is a string
+    if isinstance(text, dict):
+        text = text.get('text', str(text))
+
     equations = []
-    
-    # Pattern 1: LaTeX-style equations with delimiters
+
+    # ---------------------------
+    # 1. LaTeX-style equations
+    # ---------------------------
     latex_patterns = [
-        r'\$\$(.*?)\$\$',  # Display math $$...$$
-        r'\\\[(.*?)\\\]',   # Display math \[...\]
-        r'\\\((.*?)\\\)',   # Inline math \(...\)
+        r'\$\$(.*?)\$\$',        # $$ ... $$
+        r'\\\[(.*?)\\\]',        # \[ ... \]
+        r'\\\((.*?)\\\)',        # \( ... \)
     ]
-    
+
     for pattern in latex_patterns:
         matches = re.findall(pattern, text, re.DOTALL)
         for match in matches:
             cleaned = match.strip()
             if is_valid_equation(cleaned):
-                equations.append({
-                    "raw": match,
-                    "cleaned": cleaned
-                })
-    
-    # Pattern 2: Common mathematical expressions (fallback)
-    # Look for lines with math symbols and reasonable structure
-    math_pattern = r'([A-Za-z_]\w*\s*=\s*[^,;\n]{5,100})'
-    matches = re.findall(math_pattern, text)
-    
+                equations.append(cleaned)
+
+    # ---------------------------
+    # 2. Inline algebraic expressions
+    # ---------------------------
+    inline_pattern = r'([A-Za-z0-9_]+\s*=\s*[^,;\n]{5,120})'
+    matches = re.findall(inline_pattern, text)
+
     for match in matches:
         cleaned = match.strip()
         if is_valid_equation(cleaned) and has_math_symbols(cleaned):
-            # Avoid duplicates
-            if not any(eq['cleaned'] == cleaned for eq in equations):
-                equations.append({
-                    "raw": match,
-                    "cleaned": cleaned
-                })
-    
-    # Remove duplicates and filter by quality
+            if cleaned not in equations:
+                equations.append(cleaned)
+
+    # ---------------------------
+    # Final filtering
+    # ---------------------------
+    final = []
     seen = set()
-    filtered = []
+
     for eq in equations:
-        key = eq['cleaned']
-        if key not in seen and len(key) > 10:  # Min length filter
-            seen.add(key)
-            filtered.append(eq)
-    
-    return filtered[:20]  # Limit to top 20 equations
+        if eq not in seen:
+            seen.add(eq)
+            final.append(eq)
+
+    # Limit to top 20
+    return final[:20]
 
 
-def is_valid_equation(text: str) -> bool:
-    """Check if text looks like a valid equation."""
-    if len(text) < 5 or len(text) > 300:
-        return False
-    
-    # Must contain some math content
-    math_indicators = ['=', r'\sum', r'\int', r'\frac', r'\times', '+', '-', '*', '/']
-    if not any(indicator in text for indicator in math_indicators):
-        return False
-    
-    # Exclude if mostly prose
-    words = re.findall(r'\b[A-Za-z]{4,}\b', text)
-    if len(words) > 15:  # Too many long words = probably prose
-        return False
-    
-    return True
+def is_valid_equation(equation: str) -> bool:
+    equation = equation.strip()
+    return len(equation) >= 3
 
 
-def has_math_symbols(text: str) -> bool:
-    """Check if text contains mathematical symbols."""
-    math_symbols = [
-        '∑', '∫', '∂', '∇', '√', '±', '×', '÷', '≈', '≠', '≤', '≥',
-        r'\sum', r'\int', r'\partial', r'\nabla', r'\sqrt', r'\frac',
-        r'\alpha', r'\beta', r'\gamma', r'\theta', r'\sigma', r'\omega'
+def has_math_symbols(equation: str) -> bool:
+    math_symbols = ['+', '-', '*', '/', '=', '^', '\\', '(', ')']
+    greek_letters = [
+        'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi', 'rho', 'sigma', 'tau', 'upsilon', 'phi', 'chi', 'psi', 'omega'
     ]
-    return any(symbol in text for symbol in math_symbols)
+    return any(symbol in equation for symbol in math_symbols) or any(greek in equation.lower() for greek in greek_letters)
 
 
-def format_equation_for_notebook(eq: dict) -> str:
-    """Format equation nicely for Jupyter notebook display."""
-    cleaned = eq['cleaned']
-    
-    # If it already has LaTeX delimiters, use as-is
-    if cleaned.startswith('\\[') or cleaned.startswith('$$'):
-        return cleaned
-    
-    # Otherwise, wrap in display math
-    return f"$${cleaned}$$"
-
-
-# Example usage and testing
+# Direct test
 if __name__ == "__main__":
-    sample_text = """
-    The N-body problem is formulated as f(x_i) = \sum_{j=1}^N K(x_i,y_j)\sigma_j.
-    
+    sample = """
+    f(x_i) = \\sum_{j=1}^N K(x_i, y_j) \\sigma_j
+
     $$K(x,y) = \\frac{1}{|x-y|}$$
-    
-    Chebyshev nodes are given by x_m = cos((2m-1)π/(2n)).
-    
-    This is just regular text without equations.
-    
-    The complexity is O(N log N) for the algorithm.
+
+    x_m = cos((2m - 1)π / (2n))
+
+    This is normal text.
     """
-    
-    equations = extract_equations(sample_text)
-    print(f"Found {len(equations)} equations:")
-    for i, eq in enumerate(equations, 1):
-        print(f"{i}. {eq['cleaned']}")
+
+    eqs = extract_equations(sample)
+    print(f"Found {len(eqs)} equations:")
+    for e in eqs:
+        print(" -", e)

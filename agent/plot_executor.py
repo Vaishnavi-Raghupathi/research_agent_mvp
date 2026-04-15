@@ -152,3 +152,5 @@ plt.grid(True)
         print(f"✓ Test plot saved: {img_path}")
     else:
         print(f"✗ Test failed: {error}")
+
+output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "generated_plots")

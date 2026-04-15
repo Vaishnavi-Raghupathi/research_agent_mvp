@@ -1,11 +1,12 @@
 import subprocess
 import tempfile
 import os
-import time # Added for wait/retry logic (optional but good practice)
 
 # BUG FIX: Ensure both generate_code and fix_code are imported
 # They are required by the functions defined here.
 from agent.codegen import generate_code, fix_code
+import torch
+import torch.nn as nn
 
 
 def execute_code_in_sandbox(code_string: str):
@@ -29,6 +30,9 @@ def execute_code_in_sandbox(code_string: str):
     except subprocess.TimeoutExpired:
         success = False
         output = "TimeoutExpired: Code execution exceeded the 15-second limit."
+    except subprocess.SubprocessError as e:
+        success = False
+        output = str(e)
 
     finally:
         os.remove(path)
@@ -43,10 +47,6 @@ def run_code_agent_loop(summary, equations, max_iters=5):
     for i in range(1, max_iters + 1):
         print(f"\n--- Iteration {i}/{max_iters}: Executing Code ---")
         
-        # Add a small delay between iterations to prevent rate-limiting in high-volume tests
-        if i > 1:
-            time.sleep(1) 
-            
         success, output = execute_code_in_sandbox(current)
 
         if success:
@@ -66,3 +66,56 @@ def run_code_agent_loop(summary, equations, max_iters=5):
         current = fix_code(current, output)
 
     return None # Should not be reached
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.encoding = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
+        self.encoding[:, 0::2] = torch.sin(position * div_term)
+        self.encoding[:, 1::2] = torch.cos(position * div_term)
+        self.encoding = self.encoding.unsqueeze(0)
+
+    def forward(self, x):
+        seq_len = x.size(1)
+        return x + self.encoding[:, :seq_len, :].to(x.device)
+
+class TransformerLayer(nn.Module):
+    def __init__(self, d_model, nhead):
+        super(TransformerLayer, self).__init__()
+        self.self_attn = nn.MultiheadAttention(embed_dim=d_model, num_heads=nhead)
+        self.linear1 = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(0.1)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.activation = nn.ReLU()
+
+    def forward(self, input_seq):
+        # Ensure query, key, and value are passed correctly
+        attn_output, _ = self.self_attn(input_seq, input_seq, input_seq)
+        input_seq = input_seq + self.dropout(attn_output)
+        input_seq = self.norm1(input_seq)
+        linear_output = self.linear1(input_seq)
+        input_seq = input_seq + self.dropout(self.activation(linear_output))
+        input_seq = self.norm2(input_seq)
+        return input_seq
+
+# Example usage
+class ExampleModel(nn.Module):
+    def __init__(self, input_dim, d_model, nhead):
+        super(ExampleModel, self).__init__()
+        self.positional_encoding = PositionalEncoding(d_model)
+        self.encoder = nn.Linear(input_dim, d_model)
+        self.transformer_layer = TransformerLayer(d_model, nhead)
+
+    def forward(self, input_seq):
+        input_seq = self.encoder(input_seq)
+        input_seq = self.positional_encoding(input_seq)
+        return self.transformer_layer(input_seq)
+
+# Ensure tensors have correct dimensions
+input_seq = torch.randn(10, 256, 128)  # Example input
+model = ExampleModel(128, 256, 8)
+output = model(input_seq)
+print(output.shape)

@@ -9,7 +9,6 @@ from agent.pdf_extraction import extract_pdf
 from agent.summarizer import summarize_paper
 from agent.codegen import generate_code, fix_code
 from agent.notebook_packager import build_notebook
-# from agent.code_runner import run_code  # we'll add this next session
 
 
 def run_pipeline(pdf_path: str) -> dict:
